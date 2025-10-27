@@ -64,7 +64,7 @@
       function initSimulation(images) {
         const slot = new Konva.Image({
           image: images.slot,
-          x: 150,
+          x: 100,
           y: 120,
           width: 100,
           height: 100,
@@ -84,28 +84,28 @@
         const cablePositive = new Konva.Line({
           points: [
             slot.x() + 50,
-            slot.y() + 10, // titik awal: atas slot
+            slot.y() + 10,
             (slot.x() + lamp.x()) / 2,
-            slot.y() - 60, // titik tengah (melengkung ke atas)
+            slot.y() - 60,
             lamp.x() + 60,
-            lamp.y() + 10, // titik akhir: atas lampu
+            lamp.y(),
           ],
           stroke: "red",
           strokeWidth: 6,
           lineCap: "round",
           lineJoin: "round",
-          tension: 0.5, // bikin melengkung halus
+          tension: 0.5,
           shadowBlur: 0,
         });
 
         const cableNegative = new Konva.Line({
           points: [
             slot.x() + 50,
-            slot.y() + slot.height() - 10, // titik awal: bawah slot
+            slot.y() + slot.height() - 10,
             (slot.x() + lamp.x()) / 2,
-            slot.y() + 200, // titik tengah (melengkung ke bawah)
+            slot.y() + 150,
             lamp.x() + 60,
-            lamp.y() + lamp.height() - 10, // titik akhir: bawah lampu
+            lamp.y() + lamp.height(),
           ],
           stroke: "black",
           strokeWidth: 6,
@@ -115,19 +115,33 @@
           shadowBlur: 0,
         });
 
+        function activateCable(active = false) {
+          const glow = active ? 2 : 0;
+          gsap.to(cablePositive, {
+            shadowBlur: glow,
+            shadowColor: "red",
+            duration: 0.3,
+          });
+          gsap.to(cableNegative, {
+            shadowBlur: glow,
+            shadowColor: "black",
+            duration: 0.3,
+          });
+        }
+
         layer.add(cablePositive);
         layer.add(cableNegative);
         layer.draw();
 
         const items = [
           { name: "book", image: images.book, x: 100 },
-          { name: "battery", image: images.battery, x: 220 },
-          { name: "airplane", image: images.airplane, x: 340 },
+          { name: "battery", image: images.battery, x: 375 },
+          { name: "airplane", image: images.airplane, x: 650 },
         ];
 
-        // -- Draggable --
+        const itemsNodes = {};
         items.forEach((item) => {
-          const sprite = new Konva.Image({
+          const node = new Konva.Image({
             image: item.image,
             x: item.x,
             y: 400,
@@ -137,70 +151,81 @@
             name: item.name,
           });
 
-          sprite.startX = item.x;
-          sprite.startY = 400;
+          node.startX = item.x;
+          node.startY = 400;
 
-          sprite.on("dragstart", () => {
-            sprite.moveToTop();
-            gsap.to(sprite, { scaleX: 1.1, scaleY: 1.1, duration: 0.2 });
-          });
-
-          sprite.on("dragmove", () => {
-            const slotBox = slot.getClientRect();
-            const itemBox = sprite.getClientRect();
-            const intersects = checkIntersect(slotBox, itemBox);
-
-            if (intersects) {
-              slot.opacity(0.7);
-              layer.batchDraw();
-            } else {
-              slot.opacity(1);
-              layer.batchDraw();
-            }
-          });
-
-          sprite.on("dragend", () => {
-            const slotBox = slot.getClientRect();
-            const itemBox = sprite.getClientRect();
-            const intersects = checkIntersect(slotBox, itemBox);
-
-            if (intersects) {
-              const slotCenterX =
-                slot.x() + slot.width() / 2 - sprite.width() / 2;
-              const slotCentery =
-                slot.y() + slot.height() / 2 - sprite.height() / 2;
-
-              gsap.to(sprite, {
-                x: slotCenterX,
-                y: slotCentery,
-                scaleX: 1,
-                scaleY: 1,
-                duration: 0.3,
-                ease: "power2.out",
-              });
-
-              if (sprite.name() === "battery") {
-                turnOnLamp(lamp, images);
-              } else {
-                turnOffLamp(lamp, images);
-              }
-            } else {
-              gsap.to(sprite, {
-                x: sprite.startX,
-                y: sprite.startY,
-                scaleX: 1,
-                scaleY: 1,
-                duration: 0.4,
-                ease: "back.out(1.7)",
-              });
-              turnOffLamp(lamp, images);
-            }
-            slot.opacity(1);
-            layer.batchDraw();
-          });
-          layer.add(sprite);
+          layer.add(node);
+          itemsNodes[item.name] = node;
         });
         layer.draw();
+
+        let currentItemInSlot = null;
+
+        stage.on("dragend", (e) => {
+          const item = e.target;
+          const slotBox = slot.getClientRect();
+          const itemBox = item.getClientRect();
+          const intersects = checkIntersect(slotBox, itemBox);
+
+          if (intersects) {
+            if (currentItemInSlot && currentItemInSlot !== item) {
+              gsap.to(currentItemInSlot, {
+                x: currentItemInSlot.startX,
+                y: currentItemInSlot.startY,
+                duration: 0.4,
+                ease: "power2.inOut",
+              });
+              currentItemInSlot = null;
+            }
+
+            const slotCenterX = slot.x() + slot.width() / 2 - item.width() / 2;
+            const slotCentery =
+              slot.y() + slot.height() / 2 - item.height() / 2;
+
+            gsap.to(item, {
+              x: slotCenterX,
+              y: slotCentery,
+              scaleX: 1,
+              scaleY: 1,
+              duration: 0.3,
+              ease: "power2.out",
+            });
+
+            currentItemInSlot = item;
+
+            if (item.name() === "battery") {
+              turnOnLamp(lamp, images);
+              activateCable(true);
+            } else {
+              turnOffLamp(lamp, images);
+              activateCable(false);
+            }
+          } else {
+            gsap.to(item, {
+              x: item.startX,
+              y: item.startY,
+              scaleX: 1,
+              scaleY: 1,
+              duration: 0.4,
+              ease: "back.out(1.7)",
+            });
+            turnOffLamp(lamp, images);
+            activateCable(false);
+
+            if (currentItemInSlot === item) {
+              currentItemInSlot = null;
+            }
+          }
+
+          slot.opacity(1);
+          layer.batchDraw();
+        });
+
+        stage.on("dragstart", (e) => {
+          const item = e.target;
+          item.moveToTop();
+          gsap.to(item, { scaleX: 1.1, scaleY: 1.1, duration: 0.2 });
+        });
       }
 
       function checkIntersect(a, b) {
@@ -214,11 +239,27 @@
 
       function turnOnLamp(lamp, images) {
         lamp.image(images.lightOn);
+        const tl = gsap.timeline();
+
+        tl.to(lamp, { opacity: 0.3, duration: 0.1 })
+          .to(lamp, { opacity: 1, duration: 0.1 })
+          .to(lamp, { opacity: 0.1, duration: 1.2 })
+          .to(lamp, { opacity: 1, duration: 0.12 })
+          .to(lamp, { opacity: 0.3, duration: 0.05 })
+          .to(lamp, { opacity: 1, duration: 0.05 });
+
         gsap.to(lamp, { duration: 0.3 });
       }
 
       function turnOffLamp(lamp, images) {
         lamp.image(images.lightOff);
+        const tl = gsap.timeline();
+        tl.to(lamp, { opacity: 0.3, duration: 0.1 })
+          .to(lamp, { opacity: 1, duration: 0.1 })
+          .to(lamp, { opacity: 0.6, duration: 0.08 })
+          .to(lamp, { opacity: 1, duration: 0.12 })
+          .to(lamp, { opacity: 0.9, duration: 0.05 })
+          .to(lamp, { opacity: 1, duration: 0.05 });
         gsap.to(lamp, { duration: 0.3 });
       }
     </script>
